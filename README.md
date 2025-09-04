@@ -45,6 +45,15 @@ You can also use [annotations](https://opentelemetry.io/docs/zero-code/java/agen
 Once you have the proper maven dependencies, then you can get OTL instances to create your own tracers, spans and monitor objects.
 
 
+# Collector
+[Collector](https://opentelemetry.io/docs/collector/) is a stand-alone tool that can receive telemetry data, process it and then feed to other tools like Jaeger, Prometheus, Fluent Bit, etc.
+While a collector process is not strictly needed, and small dev projects can do without a collector, its strongly recommended to have one for production and critical uses because collector
+improves the scalability, performance and stability of receiving and exporting data. It also supports retries, encryption, batching and sensitive data filtering.
 
+The structure of any Collector configuration file consists of four classes of pipeline components that access telemetry data:
+1. Receivers 
+2. Processors 
+3. Exporters 
+4. Connectors : These join two pipelines, acting as both exporter and receiver. A connector consumes data as a receiver at the end of one pipeline and emits data as an exporter at the beginning of another pipeline
 
    
