@@ -57,3 +57,149 @@ The structure of any Collector configuration file consists of four classes of pi
 4. Connectors : These join two pipelines, acting as both exporter and receiver. A connector consumes data as a receiver at the end of one pipeline and emits data as an exporter at the beginning of another pipeline
 
    
+
+# Some other related concepts
+
+## MDC
+
+MDC stands for Mapped Diagnostic Context used in logging frameworks like Log4j, SLF4J, or Logback in Java.  
+MDC lets you attach contextual information (like userId, requestId, sessionId) to the current thread of execution.  
+That info is then automatically included in all log messages from that thread, without having to pass the values explicitly everywhere.
+
+Example:
+
+```java
+import org.slf4j.MDC;
+
+public class Example {
+    public void processRequest(String requestId) {
+        MDC.put("requestId", requestId); // Add context
+        try {
+            log.info("Starting processing"); 
+            // Logs will now include requestId
+        } finally {
+            MDC.clear(); // Clean up after thread finishes
+        }
+    }
+}
+```
+
+
+Log output (with `%X{requestId}` in the log pattern specified in log4j2.xml):
+
+```
+2025-09-04 12:00:00 INFO  [requestId=abc123] Starting processing
+```
+
+🚦 Why it’s useful
+
+Adds traceability across logs, especially in multi-threaded or distributed systems.
+
+Helps correlate logs for a single request in microservices.
+
+Works well with correlation IDs in observability setups.
+
+👉 Sometimes MDC is paired with NDC (Nested Diagnostic Context), which tracks nested contexts like call stacks.
+
+
+## NDC (Nested Diagnostic Context)
+
+While MDC is a map of key–value pairs, NDC is essentially a stack of contextual messages.  
+You push context information when entering a certain scope (e.g., method, request, transaction).  
+You pop it when leaving.  
+
+Each log message will include the entire context stack, so logs show nested scopes.
+
+```java
+import org.apache.log4j.NDC;
+
+public class Example {
+    public void processOrder(String orderId) {
+        NDC.push("orderId=" + orderId); // Enter context
+        try {
+            log.info("Start processing");
+            validate(orderId);
+            ship(orderId);
+        } finally {
+            NDC.pop(); // Leave context
+            NDC.remove(); // Clean up
+        }
+    }
+}
+```
+
+If the pattern layout is:
+%d %-5p %c %x - %m%n
+
+Example log output:
+```
+2025-09-04 12:00:00 INFO  com.example.OrderService [orderId=123] - Start processing
+2025-09-04 12:00:01 INFO  com.example.OrderService [orderId=123] - Validation passed
+2025-09-04 12:00:02 INFO  com.example.OrderService [orderId=123] - Shipping started
+```
+
+Here %x means “current NDC stack”  
+MDC is usually simpler and more common today.
+
+
+## Attaching attributes to transactions is more efficient and easier to read than MDC
+
+**1. With MDC (classic logging)**
+
+You’d add the attribute into MDC:
+
+```java
+MDC.put("securitymode", "strict");
+log.info("User logged in");
+log.info("Fetching orders");
+log.info("Returning response");
+MDC.clear();
+```
+
+Log output:
+```
+2025-09-04 12:00:00 INFO [securitymode=strict] User logged in
+2025-09-04 12:00:01 INFO [securitymode=strict] Fetching orders
+2025-09-04 12:00:02 INFO [securitymode=strict] Returning response
+```
+
+✅ Each line shows securitymode=strict.  
+❌ But it’s duplicated on every line → log volume grows with number of log entries.
+
+**2. With Transaction Attributes (APM/Tracing API)**
+
+You attach the attribute to the transaction/trace:
+
+```java
+Transaction txn = txnMarkingService.currentTransaction();
+txn.addAttribute("securitymode", "strict");
+
+log.info("User logged in");
+log.info("Fetching orders");
+log.info("Returning response");
+```
+
+Log output (lighter):
+```
+2025-09-04 12:00:00 INFO User logged in
+2025-09-04 12:00:01 INFO Fetching orders
+2025-09-04 12:00:02 INFO Returning response
+```
+
+Tracing/observability UI (Jaeger, New Relic, etc.):  
+Transaction: /api/getOrders  
+Attributes:  
+   securitymode = strict  
+   order-id     = 12345  
+   user-id      = alice  
+
+
+✅ Attribute shown once at the transaction level.  
+✅ Automatically applies to all spans/logs in this transaction.  
+✅ Easy to filter/search: e.g., show me all transactions where securitymode=strict.  
+✅ Saves log storage (no repetition).
+
+Summary:
+1. Use MDC if your system is only using logs (no tracing/metrics).
+2. Use Transaction attributes if you have a tracing/APM system — it gives you richer context and less noisy logs.
+
