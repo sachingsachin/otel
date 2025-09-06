@@ -111,21 +111,42 @@ You pop it when leaving.
 Each log message will include the entire context stack, so logs show nested scopes.
 
 ```java
+import org.apache.log4j.Logger;
 import org.apache.log4j.NDC;
 
-public class Example {
+public class OrderProcessor {
+    private static final Logger log = Logger.getLogger(OrderProcessor.class);
+
     public void processOrder(String orderId) {
-        NDC.push("orderId=" + orderId); // Enter context
+        NDC.push("orderId=" + orderId);   // Level 1 context
         try {
-            log.info("Start processing");
-            validate(orderId);
-            ship(orderId);
+            log.info("Start processing order");
+
+            processItem("item-101");
+            processItem("item-102");
+
+            log.info("Finished order");
         } finally {
-            NDC.pop(); // Leave context
-            NDC.remove(); // Clean up
+            NDC.pop();   // Exit Level 1
+            NDC.remove();
         }
     }
+
+    private void processItem(String itemId) {
+        NDC.push("itemId=" + itemId);    // Level 2 context
+        try {
+            log.info("Validating item");
+            log.info("Shipping item");
+        } finally {
+            NDC.pop();   // Exit Level 2
+        }
+    }
+
+    public static void main(String[] args) {
+        new OrderProcessor().processOrder("ORD-123");
+    }
 }
+
 ```
 
 If the pattern layout is:
@@ -133,9 +154,12 @@ If the pattern layout is:
 
 Example log output:
 ```
-2025-09-04 12:00:00 INFO  com.example.OrderService [orderId=123] - Start processing
-2025-09-04 12:00:01 INFO  com.example.OrderService [orderId=123] - Validation passed
-2025-09-04 12:00:02 INFO  com.example.OrderService [orderId=123] - Shipping started
+2025-09-04 12:00:00 INFO  OrderProcessor [orderId=ORD-123] - Start processing order
+2025-09-04 12:00:01 INFO  OrderProcessor [orderId=ORD-123 itemId=item-101] - Validating item
+2025-09-04 12:00:02 INFO  OrderProcessor [orderId=ORD-123 itemId=item-101] - Shipping item
+2025-09-04 12:00:03 INFO  OrderProcessor [orderId=ORD-123 itemId=item-102] - Validating item
+2025-09-04 12:00:04 INFO  OrderProcessor [orderId=ORD-123 itemId=item-102] - Shipping item
+2025-09-04 12:00:05 INFO  OrderProcessor [orderId=ORD-123] - Finished order
 ```
 
 Here %x means “current NDC stack”  
